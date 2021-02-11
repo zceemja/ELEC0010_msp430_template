@@ -2,18 +2,21 @@ import sys
 
 Import("env", "projenv")
 
-EMULATOR_VERSION_URL = "https://raw.githubusercontent.com/zceemja/msp430emu/master/msp430emu/version.py"
+EMULATOR_VERSION_URL = "https://api.github.com/repos/zceemja/msp430emu/releases/latest"
 EMULATOR_LINK = "https://github.com/zceemja/msp430emu/archive/master.zip"
-EMULATOR_LINK_WIN = "https://github.com/zceemja/msp430emu/releases/download/v{0}/msp430emu-{0}-cp37-cp37m-win_amd64.whl"
 
 def get_latest_emulator():
     import urllib.request
+    import json
     response = urllib.request.urlopen(EMULATOR_VERSION_URL)
-    data = response.read()
-    for line in data.decode('utf-8').split('\n'):
-        if line.startswith("__version__"):
-            return line.split('=')[1].strip().strip('"').strip("'")
-    return '0.0'
+    data = json.loads(response.read())
+    version = data.get('tag_name', 'v0.0').lstrip('v')
+    asserts = [asset.get('browser_download_url') for asset in data.get('assets', []) if asset.get('browser_download_url')]
+    source = data.get('zipball_url', EMULATOR_LINK)
+    body = data.get('body')
+    if body:
+        print("Latest version comment: " + str(body))
+    return version, asserts, source
 
 def ver_to_int(str_ver):
     sp = str_ver.split('.')
@@ -22,7 +25,7 @@ def ver_to_int(str_ver):
 def update_emulator():
     print(f"Platform: {sys.platform}")
     print(f"Version: {sys.version}")
-    latest_ver = get_latest_emulator()
+    latest_ver, asserts, source = get_latest_emulator()
     print(f"Updating emulator to version: {latest_ver}")
     try:
         import msp430emu
@@ -36,9 +39,11 @@ def update_emulator():
     except AttributeError:  # if emulator is old and has not __version__
         print(f"Local emulator has no __version__")
     print(f"Updating emulator")
-    pkg_link = EMULATOR_LINK
+    pkg_link = source
     if sys.platform == "win32":
-        pkg_link = EMULATOR_LINK_WIN.format(latest_ver)
+        for asset in asserts:
+            if 'win_amd64' in asset:
+                pkg_link = asset
     env.Execute('pip install "%s"' % pkg_link)
 
 def on_upload(source, target, env):
